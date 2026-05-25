@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'interests_edit_screen.dart';
 
-const String TABLE_NAME = 'profil';
+const String tableName = 'profil';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,7 +41,6 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 
-
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
@@ -51,9 +50,13 @@ class WelcomeScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       body: Container(
         decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/images/Главный2.png'),
-            fit: BoxFit.cover,
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFFFE0E5),
+              Color(0xFFFFF4E8),
+            ],
           ),
         ),
         child: SafeArea(
@@ -61,13 +64,11 @@ class WelcomeScreen extends StatelessWidget {
             children: [
               Column(
                 children: [
-                  
                   SizedBox(
                     height: 170,
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        
                         Positioned(
                           left: 20,
                           top: 35,
@@ -83,7 +84,6 @@ class WelcomeScreen extends StatelessWidget {
                           ),
                         ),
 
-                        
                         Positioned(
                           left: 285,
                           top: 70,
@@ -94,25 +94,22 @@ class WelcomeScreen extends StatelessWidget {
                           ),
                         ),
 
-                        
                         Positioned(
                           left: 20,
-                          right:
-                              20, 
+                          right: 20,
                           top: 120,
                           child: Container(height: 2, color: Colors.black),
                         ),
 
-                        
                         Positioned(
                           left: 20,
                           top: 132,
                           child: const Text(
                             'Найди свою идеальную пару',
                             style: TextStyle(
-                              fontFamily: 'Rosarivo', 
-                              fontSize: 24, 
-                              color: Colors.white, 
+                              fontFamily: 'Rosarivo',
+                              fontSize: 24,
+                              color: Colors.white,
                               fontWeight: FontWeight.w400,
                             ),
                           ),
@@ -123,7 +120,6 @@ class WelcomeScreen extends StatelessWidget {
 
                   const Spacer(),
 
-                
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 40),
                     child: Column(
@@ -252,7 +248,6 @@ class WelcomeScreen extends StatelessWidget {
   }
 }
 
-
 // ЭКРАН РЕГИСТРАЦИИ
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -267,7 +262,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
 
   Future<void> _register() async {
-    
     final email = _email.text.trim();
     final password = _pass.text;
 
@@ -286,7 +280,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
       return;
     }
-    
+
     setState(() => _loading = true);
     try {
       final res = await Supabase.instance.client.auth.signUp(
@@ -294,7 +288,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password: _pass.text,
       );
       if (res.user != null) {
-        await Supabase.instance.client.from(TABLE_NAME).insert({
+        await Supabase.instance.client.from(tableName).insert({
           'id': res.user!.id,
           'email': _email.text.trim(),
           'name': _name.text.trim(),
@@ -351,7 +345,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 }
-
 
 // ЭКРАН ВХОДА
 
@@ -412,7 +405,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-
 //  ГЛАВНЫЙ ЭКРАН С НИЖНЕЙ НАВИГАЦИЕЙ
 
 class MainScreen extends StatefulWidget {
@@ -471,7 +463,6 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-
 // ЭКРАНЫ-ЗАГЛУШКИ
 
 class HomeScreen extends StatelessWidget {
@@ -493,7 +484,6 @@ class MessengerScreen extends StatelessWidget {
   Widget build(BuildContext context) =>
       const Center(child: Text('💬 Мессенджер'));
 }
-
 
 // ЭКРАН НАСТРОЕК
 
@@ -595,7 +585,7 @@ class SettingsScreen extends StatelessWidget {
     final user = Supabase.instance.client.auth.currentUser;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFFE0E5), 
+      backgroundColor: const Color(0xFFFFE0E5),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -632,7 +622,7 @@ class SettingsScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(30),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 5,
                       offset: const Offset(0, 2),
                     ),
@@ -667,7 +657,7 @@ class SettingsScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(30),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 5,
                       offset: const Offset(0, 2),
                     ),
@@ -693,7 +683,7 @@ class SettingsScreen extends StatelessWidget {
 
               const Spacer(),
 
-              // Информация о пользователе 
+              // Информация о пользователе
               if (user != null)
                 Text(
                   user.email ?? '',
@@ -707,7 +697,6 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 }
-
 
 // ЭКРАН ПРОСМОТРА ПРОФИЛЯ
 
@@ -736,7 +725,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     if (user == null) return;
     try {
       final res = await Supabase.instance.client
-          .from(TABLE_NAME)
+          .from(tableName)
           .select()
           .eq('id', user.id)
           .single();
@@ -753,10 +742,12 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_loading)
+    if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_data == null)
+    }
+    if (_data == null) {
       return const Scaffold(body: Center(child: Text('Профиль не найден')));
+    }
 
     final name = _data!['name'] ?? 'Имя';
     final surname = _data!['surname'] ?? ''; // Добавили фамилию
@@ -853,7 +844,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
               ],
             ),
             SizedBox(
-              height: 200, 
+              height: 200,
               child: TabBarView(
                 controller: _tabController,
                 children: [
@@ -883,12 +874,9 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 ],
               ),
             ),
-            //  СЕКЦИЯ ИНТЕРЕСОВ 
+            //  СЕКЦИЯ ИНТЕРЕСОВ
             Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ), 
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -942,7 +930,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
+                                  color: Colors.black.withValues(alpha: 0.05),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),
@@ -959,7 +947,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 ],
               ),
             ),
-            const SizedBox(height: 20),  
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -967,8 +955,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   }
 }
 
-
-//  ЭКРАН РЕДАКТИРОВАНИЯ ПРОФИЛЯ 
+//  ЭКРАН РЕДАКТИРОВАНИЯ ПРОФИЛЯ
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -1000,7 +987,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (user == null) return;
 
     final res = await Supabase.instance.client
-        .from(TABLE_NAME)
+        .from(tableName)
         .select()
         .eq('id', user.id)
         .single();
@@ -1080,7 +1067,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             .getPublicUrl(fileName);
       }
 
-      await Supabase.instance.client.from(TABLE_NAME).upsert({
+      final profileData = {
         'id': user.id,
         'email': user.email,
         'name': _name.text,
@@ -1089,10 +1076,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'city': _city.text,
         'country': _country.text,
         'bio': _bio.text,
-        if (avatarUrl != null) 'avatar_url': avatarUrl,
-        'created_at': DateTime.now().toIso8601String(), 
+        'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
-      });
+      };
+      if (avatarUrl != null) {
+        profileData['avatar_url'] = avatarUrl;
+      }
+
+      await Supabase.instance.client.from(tableName).upsert(profileData);
 
       if (!mounted) return;
       Navigator.pop(context);

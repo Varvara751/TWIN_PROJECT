@@ -67,7 +67,7 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
     }
   }
 
-  // Переключение интереса 
+  // Переключение интереса
   void _toggle(String interest) {
     setState(() {
       if (_selectedInterests.contains(interest)) {
@@ -166,7 +166,7 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
                         border: Border.all(color: Colors.black12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
