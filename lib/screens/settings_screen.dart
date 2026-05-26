@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/app_constants.dart';
 import 'welcome_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  void _showMessage(BuildContext context, String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
 
   Future<void> _logout(BuildContext context) async {
     final confirm = await showDialog<bool>(
@@ -44,11 +50,11 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text(
-          'Удалить анкету?',
+          'Удалить аккаунт?',
           style: TextStyle(color: Colors.red),
         ),
         content: const Text(
-          'Это действие нельзя отменить. Ваша анкета будет удалена навсегда.',
+          'Это действие нельзя отменить. Ваш аккаунт, анкета и данные будут удалены навсегда.',
         ),
         actions: [
           TextButton(
@@ -68,10 +74,7 @@ class SettingsScreen extends StatelessWidget {
       try {
         final user = Supabase.instance.client.auth.currentUser;
         if (user != null) {
-          await Supabase.instance.client
-              .from(tableName)
-              .delete()
-              .eq('id', user.id);
+          await Supabase.instance.client.functions.invoke('delete-account');
           await Supabase.instance.client.auth.signOut();
         }
 
@@ -82,12 +85,15 @@ class SettingsScreen extends StatelessWidget {
             (route) => false,
           );
         }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Ошибка при удалении: $e')));
-        }
+      } on FunctionException catch (e) {
+        if (!context.mounted) return;
+        final message = e.status == 404
+            ? 'Функция удаления аккаунта не настроена на сервере'
+            : 'Ошибка при удалении аккаунта';
+        _showMessage(context, message);
+      } catch (_) {
+        if (!context.mounted) return;
+        _showMessage(context, 'Ошибка при удалении аккаунта');
       }
     }
   }
@@ -110,7 +116,7 @@ class SettingsScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               const SizedBox(height: 20),
@@ -134,7 +140,7 @@ class SettingsScreen extends StatelessWidget {
               _SettingsButton(
                 icon: Icons.delete_outline,
                 iconColor: Colors.red,
-                label: 'Удалить анкету',
+                label: 'Удалить аккаунт',
                 labelColor: Colors.red,
                 onPressed: () => _deleteAccount(context),
               ),
@@ -164,8 +170,8 @@ class _SettingsButton extends StatelessWidget {
 
   final IconData icon;
   final Color iconColor;
-  final String label;
   final Color labelColor;
+  final String label;
   final VoidCallback onPressed;
 
   @override

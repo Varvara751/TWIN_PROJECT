@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twin_project/screens/favorites_screen.dart';
 import 'package:twin_project/screens/home_screen.dart';
+import 'package:twin_project/screens/login_screen.dart';
 import 'package:twin_project/screens/main_screen.dart';
 import 'package:twin_project/screens/messenger_screen.dart';
 import 'package:twin_project/screens/register_screen.dart';
@@ -97,6 +98,15 @@ Widget _buildTestApp(Widget child) {
 }
 
 void main() {
+  test('Registration email validation allows only selected ASCII domains', () {
+    expect(isAllowedRegistrationEmail('user@gmail.com'), isTrue);
+    expect(isAllowedRegistrationEmail('user@mail.ru'), isTrue);
+    expect(isAllowedRegistrationEmail('user@yandex.ru'), isTrue);
+    expect(isAllowedRegistrationEmail('пользователь@mail.ru'), isFalse);
+    expect(isAllowedRegistrationEmail('user@rambler.ru'), isFalse);
+    expect(isAllowedRegistrationEmail('user@gmail.ru'), isFalse);
+  });
+
   testWidgets('WelcomeScreen renders the auth entry points', (tester) async {
     await tester.pumpWidget(_buildTestApp(const WelcomeScreen()));
 
@@ -124,6 +134,28 @@ void main() {
     await tester.pump();
 
     expect(find.byType(SnackBar), findsOneWidget);
+  });
+
+  testWidgets('RegisterScreen blocks Cyrillic email input', (tester) async {
+    await tester.pumpWidget(_buildTestApp(const RegisterScreen()));
+
+    await tester.enterText(find.byType(TextField).at(1), 'тест@mail.ru');
+    await tester.pump();
+
+    final emailField = tester.widget<TextField>(find.byType(TextField).at(1));
+    expect(emailField.controller?.text, '@mail.ru');
+  });
+
+  testWidgets('LoginScreen validates empty email before network calls', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp(const LoginScreen()));
+
+    await tester.tap(find.byType(ElevatedButton));
+    await tester.pump();
+
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.text(loginErrorMessage), findsOneWidget);
   });
 
   testWidgets('MainScreen switches between bottom navigation tabs', (
