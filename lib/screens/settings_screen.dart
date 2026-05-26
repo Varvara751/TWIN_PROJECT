@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/profile_sync_service.dart';
 import 'welcome_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -75,6 +76,7 @@ class SettingsScreen extends StatelessWidget {
         final user = Supabase.instance.client.auth.currentUser;
         if (user != null) {
           await Supabase.instance.client.functions.invoke('delete-account');
+          await ProfileSyncService.instance.clearUserData(user.id);
           await Supabase.instance.client.auth.signOut();
         }
 

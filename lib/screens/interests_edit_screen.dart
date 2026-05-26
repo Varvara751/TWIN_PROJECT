@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_constants.dart';
+import '../services/profile_sync_service.dart';
 
 class InterestsEditScreen extends StatefulWidget {
   const InterestsEditScreen({super.key});
@@ -38,6 +39,7 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
   ];
 
   List<String> _selectedInterests = [];
+  Map<String, dynamic>? _profile;
   bool _loading = false;
 
   @override
@@ -50,14 +52,20 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
 
-    final response = await Supabase.instance.client
-        .from(tableName)
-        .select('interests')
-        .eq('id', user.id)
-        .single();
+    final localProfile = await ProfileSyncService.instance.getLocalProfile(
+      user.id,
+    );
+    final response =
+        localProfile ??
+        await Supabase.instance.client
+            .from(tableName)
+            .select()
+            .eq('id', user.id)
+            .single();
 
     if (mounted) {
       setState(() {
+        _profile = Map<String, dynamic>.from(response);
         _selectedInterests =
             (response['interests'] as List<dynamic>?)
                 ?.map((e) => e.toString())
@@ -83,10 +91,15 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
     if (user == null) return;
 
     try {
-      await Supabase.instance.client
-          .from(tableName)
-          .update({'interests': _selectedInterests})
-          .eq('id', user.id);
+      final profile = Map<String, dynamic>.from(_profile ?? {});
+      profile['id'] = user.id;
+      profile['email'] = user.email;
+      profile['interests'] = _selectedInterests;
+      profile['updated_at'] = DateTime.now().toIso8601String();
+      await ProfileSyncService.instance.saveProfileAndSync(
+        userId: user.id,
+        profileData: profile,
+      );
 
       if (!mounted) return;
       Navigator.pop(context);

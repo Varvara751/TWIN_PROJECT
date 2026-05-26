@@ -13,6 +13,18 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+async function removeStorageFolder(
+  supabase: any,
+  bucket: string,
+  folder: string,
+) {
+  const { data: files } = await supabase.storage.from(bucket).list(folder);
+  if (!files || files.length === 0) return;
+
+  const paths = files.map((file) => `${folder}/${file.name}`);
+  await supabase.storage.from(bucket).remove(paths);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -47,18 +59,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const avatarFolder = `avatars/${user.id}`;
-    const { data: avatarFiles } = await supabase.storage
-      .from('avatars')
-      .list(avatarFolder);
-
-    if (avatarFiles && avatarFiles.length > 0) {
-      const avatarPaths = avatarFiles.map((file) => `${avatarFolder}/${file.name}`);
-      await supabase.storage.from('avatars').remove(avatarPaths);
-    }
+    await removeStorageFolder(supabase, 'avatars', `avatars/${user.id}`);
+    await removeStorageFolder(supabase, 'avatars', `profile_photos/${user.id}`);
   } catch (error) {
-    console.warn('Avatar cleanup failed:', error);
+    console.warn('Storage cleanup failed:', error);
   }
+
+  await supabase.from('profile_likes').delete().eq('target_user_id', user.id);
+  await supabase.from('profile_likes').delete().eq('source_user_id', user.id);
+  await supabase.from('profile_follows').delete().eq('follower_id', user.id);
+  await supabase.from('profile_follows').delete().eq('following_id', user.id);
+  await supabase.from('profile_photos').delete().eq('user_id', user.id);
 
   const { error: profileError } = await supabase
     .from('profil')
