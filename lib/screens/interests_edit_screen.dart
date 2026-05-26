@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/app_constants.dart';
+
 class InterestsEditScreen extends StatefulWidget {
   const InterestsEditScreen({super.key});
 
@@ -9,7 +11,6 @@ class InterestsEditScreen extends StatefulWidget {
 }
 
 class _InterestsEditScreenState extends State<InterestsEditScreen> {
-  // Все доступные интересы
   final List<String> _allInterests = [
     'Спорт',
     'Музыка',
@@ -45,13 +46,12 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
     _loadInterests();
   }
 
-  // Загружаем текущие интересы пользователя
   Future<void> _loadInterests() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
 
     final response = await Supabase.instance.client
-        .from('profil')
+        .from(tableName)
         .select('interests')
         .eq('id', user.id)
         .single();
@@ -67,7 +67,6 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
     }
   }
 
-  // Переключение интереса
   void _toggle(String interest) {
     setState(() {
       if (_selectedInterests.contains(interest)) {
@@ -78,7 +77,6 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
     });
   }
 
-  // Сохранение в базу
   Future<void> _save() async {
     setState(() => _loading = true);
     final user = Supabase.instance.client.auth.currentUser;
@@ -86,12 +84,12 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
 
     try {
       await Supabase.instance.client
-          .from('profil')
+          .from(tableName)
           .update({'interests': _selectedInterests})
           .eq('id', user.id);
 
       if (!mounted) return;
-      Navigator.pop(context); // Возвращаемся на профиль
+      Navigator.pop(context);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -106,7 +104,7 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFDECD0), // Бежевый фон как на макете
+      backgroundColor: const Color(0xFFFDECD0),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -145,8 +143,8 @@ class _InterestsEditScreenState extends State<InterestsEditScreen> {
             Expanded(
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, // 3 колонки
-                  childAspectRatio: 3.0, // Пропорции кнопок
+                  crossAxisCount: 3,
+                  childAspectRatio: 3.0,
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
                 ),

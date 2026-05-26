@@ -1,9 +1,12 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:twin_project/main.dart';
+import 'package:twin_project/screens/favorites_screen.dart';
+import 'package:twin_project/screens/home_screen.dart';
+import 'package:twin_project/screens/main_screen.dart';
+import 'package:twin_project/screens/messenger_screen.dart';
+import 'package:twin_project/screens/register_screen.dart';
+import 'package:twin_project/screens/welcome_screen.dart';
 
 class _TestAssetBundle extends CachingAssetBundle {
   static final Uint8List _transparentPng = Uint8List.fromList([

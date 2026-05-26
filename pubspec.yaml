@@ -13,6 +13,7 @@ dependencies:
   supabase_flutter: ^2.9.1
   image_picker: ^1.1.2
   flutter_image_compress: ^2.4.0
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -25,4 +26,5 @@ dependency_overrides:
 flutter:
   uses-material-design: true
   assets:
+    - .env
     - assets/TWIN_ico.png
