@@ -3,13 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/app_constants.dart';
 import '../services/profile_sync_service.dart';
+import '../services/social_service.dart';
 import 'edit_profile_screen.dart';
 import 'interests_edit_screen.dart';
+import 'messenger_screen.dart';
 
 class ViewProfileScreen extends StatefulWidget {
-  const ViewProfileScreen({super.key});
+  const ViewProfileScreen({super.key, this.userId});
+
+  final String? userId;
 
   @override
   State<ViewProfileScreen> createState() => _ViewProfileScreenState();
@@ -18,15 +21,22 @@ class ViewProfileScreen extends StatefulWidget {
 class _ViewProfileScreenState extends State<ViewProfileScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  Map<String, dynamic>? _data;
+  Map<String, dynamic>? _profile;
   List<Map<String, dynamic>> _photos = [];
   int _followersCount = 0;
   int _followingCount = 0;
   int _likesCount = 0;
+  bool _following = false;
   bool _loading = true;
+  bool _actionBusy = false;
 
   SupabaseClient get _client => Supabase.instance.client;
   ProfileSyncService get _sync => ProfileSyncService.instance;
+  SocialService get _social => SocialService.instance;
+
+  String? get _currentUserId => _client.auth.currentUser?.id;
+  String? get _targetUserId => widget.userId ?? _currentUserId;
+  bool get _isOwnProfile => _targetUserId == _currentUserId;
 
   @override
   void initState() {
@@ -42,88 +52,89 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
   }
 
   Future<void> _loadProfile() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
+    final userId = _targetUserId;
+    if (userId == null) {
       if (mounted) setState(() => _loading = false);
       return;
     }
 
-    final localProfile = await _sync.getLocalProfile(user.id);
-    final localPhotos = await _sync.getLocalPhotos(user.id);
-    if (localProfile != null && mounted) {
-      setState(() {
-        _data = localProfile;
-        _photos = localPhotos;
-        _loading = false;
-      });
-    }
-
-    await _sync.syncPending(user.id);
-    if (await _sync.hasPendingSync(user.id)) {
-      final pendingProfile = await _sync.getLocalProfile(user.id);
-      final pendingPhotos = await _sync.getLocalPhotos(user.id);
-      if (!mounted) return;
-      setState(() {
-        _data = pendingProfile ?? _data;
-        _photos = pendingPhotos;
-        _loading = false;
-      });
-      return;
+    if (_isOwnProfile) {
+      final localProfile = await _sync.getLocalProfile(userId);
+      final localPhotos = await _sync.getLocalPhotos(userId);
+      if (mounted) {
+        setState(() {
+          _profile = localProfile ?? _fallbackOwnProfile(userId);
+          _photos = localPhotos;
+          _loading = false;
+        });
+      }
+      await _sync.syncPending(userId);
     }
 
     try {
-      var profile = await _client
-          .from(tableName)
-          .select()
-          .eq('id', user.id)
-          .maybeSingle();
+      var profile = await _social.loadProfile(userId);
+      profile ??= _isOwnProfile ? await _createOwnProfile(userId) : null;
+      if (profile == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
 
-      profile ??= await _client
-          .from(tableName)
-          .insert({
-            'id': user.id,
-            'email': user.email,
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select()
-          .single();
-
-      final photos = await _loadPhotos(user.id);
-      await _sync.cacheRemoteProfile(
-        userId: user.id,
-        profile: profile,
-        photos: photos,
-      );
-      final cachedPhotos = await _sync.getLocalPhotos(user.id);
-      final followers = await _loadCount(
-        table: 'profile_follows',
-        column: 'following_id',
-        userId: user.id,
-      );
-      final following = await _loadCount(
-        table: 'profile_follows',
-        column: 'follower_id',
-        userId: user.id,
-      );
-      final likes = await _loadCount(
-        table: 'profile_likes',
-        column: 'target_user_id',
-        userId: user.id,
-      );
+      final photos = await _loadPhotos(userId);
+      if (_isOwnProfile) {
+        await _sync.cacheRemoteProfile(
+          userId: userId,
+          profile: profile,
+          photos: photos,
+        );
+      }
+      final visiblePhotos = _isOwnProfile
+          ? await _sync.getLocalPhotos(userId)
+          : photos;
+      final followers = await _social.followersCount(userId);
+      final following = await _social.followingCount(userId);
+      final likes = await _social.totalPhotoLikesCount(userId);
+      final follows = !_isOwnProfile
+          ? await _social.isFollowing(userId)
+          : false;
 
       if (!mounted) return;
       setState(() {
-        _data = profile;
-        _photos = cachedPhotos;
+        _profile = profile;
+        _photos = visiblePhotos;
         _followersCount = followers;
         _followingCount = following;
         _likesCount = likes;
+        _following = follows;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        if (_isOwnProfile) {
+          _profile ??= _fallbackOwnProfile(userId);
+        }
+        _loading = false;
+      });
+      _showMessage('Не удалось загрузить профиль: $e');
     }
+  }
+
+  Map<String, dynamic> _fallbackOwnProfile(String userId) {
+    final email = _client.auth.currentUser?.email ?? '';
+    return {
+      'id': userId,
+      'email': email,
+      'username': 'user_${userId.substring(0, 8)}',
+      'name': email.contains('@') ? email.split('@').first : '',
+      'created_at': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<Map<String, dynamic>> _createOwnProfile(String userId) async {
+    final profile = _fallbackOwnProfile(userId);
+    await _sync.saveProfileAndSync(userId: userId, profileData: profile);
+    return profile;
   }
 
   Future<List<Map<String, dynamic>>> _loadPhotos(String userId) async {
@@ -139,27 +150,13 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     }
   }
 
-  Future<int> _loadCount({
-    required String table,
-    required String column,
-    required String userId,
-  }) async {
-    try {
-      return await _client.from(table).count().eq(column, userId);
-    } catch (_) {
-      return 0;
-    }
-  }
-
   int? _ageFromBirthDate(String? value) {
     if (value == null || value.isEmpty) return null;
     final birthDate = DateTime.tryParse(value);
     if (birthDate == null) return null;
-
     final now = DateTime.now();
     var age = now.year - birthDate.year;
-    final birthdayThisYear = DateTime(now.year, birthDate.month, birthDate.day);
-    if (now.isBefore(birthdayThisYear)) age--;
+    if (now.isBefore(DateTime(now.year, birthDate.month, birthDate.day))) age--;
     return age >= 0 ? age : null;
   }
 
@@ -186,8 +183,45 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
       city,
       country,
     ].map((part) => part.trim()).where((part) => part.isNotEmpty).toList();
+    return parts.isEmpty ? 'Место жительства не указано' : parts.join(', ');
+  }
 
-    return parts.isNotEmpty ? parts.join(', ') : 'Место жительства не указано';
+  Future<void> _toggleFollow() async {
+    final userId = _targetUserId;
+    if (userId == null || _actionBusy) return;
+    setState(() => _actionBusy = true);
+    try {
+      await _social.toggleFollow(userId, _following);
+      await _loadProfile();
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _openChat() async {
+    final userId = _targetUserId;
+    if (userId == null || _actionBusy) return;
+    setState(() => _actionBusy = true);
+    try {
+      final chatId = await _social.openChatWith(userId);
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              ChatThreadScreen(chatId: chatId, otherProfile: _profile ?? {}),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -195,15 +229,13 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (_data == null) {
+    final profile = _profile;
+    if (profile == null) {
       return const Scaffold(body: Center(child: Text('Профиль не найден')));
     }
 
-    final profile = _data!;
-    final avatar = (profile['avatar_url'] ?? '').toString();
-    final localAvatar = (profile['local_avatar_path'] ?? '').toString();
     final avatarPhoto = _avatarPhoto(profile);
-    final galleryPhotos = [?avatarPhoto, ..._photos];
+    final galleryPhotos = _isOwnProfile ? [?avatarPhoto, ..._photos] : _photos;
     final name = _profileName(profile);
     final age = _ageFromBirthDate(profile['birth_date']?.toString());
     final bio = _capitalizeFirst((profile['bio'] ?? '').toString());
@@ -211,22 +243,24 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFFFE8C8),
       appBar: AppBar(
-        automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Профиль', style: TextStyle(color: Colors.black)),
+        foregroundColor: Colors.black,
+        automaticallyImplyLeading: !_isOwnProfile,
+        title: Text(_isOwnProfile ? 'Профиль' : name),
         centerTitle: true,
         actions: [
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-            ).then((_) => _loadProfile()),
-            child: const Text(
-              'Редактировать',
-              style: TextStyle(color: Colors.black),
+          if (_isOwnProfile)
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+              ).then((_) => _loadProfile()),
+              child: const Text(
+                'Редактировать',
+                style: TextStyle(color: Colors.black),
+              ),
             ),
-          ),
         ],
       ),
       body: RefreshIndicator(
@@ -236,33 +270,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
           child: Column(
             children: [
               const SizedBox(height: 10),
-              GestureDetector(
-                onTap: avatarPhoto == null
-                    ? null
-                    : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => _PhotoViewerScreen(
-                              photo: avatarPhoto,
-                              canDelete: false,
-                            ),
-                          ),
-                        );
-                      },
-                child: CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.white,
-                  backgroundImage: avatar.isNotEmpty
-                      ? NetworkImage(avatar)
-                      : (localAvatar.isNotEmpty
-                            ? FileImage(File(localAvatar))
-                            : null),
-                  child: avatar.isEmpty && localAvatar.isEmpty
-                      ? const Icon(Icons.person, size: 50, color: Colors.grey)
-                      : null,
-                ),
-              ),
+              _Avatar(profile: profile, photo: avatarPhoto),
               const SizedBox(height: 10),
               Text(
                 '$name${age != null ? ', $age' : ''}',
@@ -271,21 +279,59 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                _social.usernameLabel(profile['username']),
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
+              ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 8,
+                ),
                 child: Text(
                   _residence(profile),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.grey),
                 ),
               ),
-              const SizedBox(height: 20),
+              if (!_isOwnProfile)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _actionBusy ? null : _toggleFollow,
+                          icon: Icon(
+                            _following ? Icons.check : Icons.person_add_alt_1,
+                          ),
+                          label: Text(
+                            _following ? 'Вы подписаны' : 'Подписаться',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _actionBusy ? null : _openChat,
+                          icon: const Icon(Icons.chat_bubble_outline),
+                          label: const Text('Сообщение'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _StatItem(label: 'Подписчиков', value: _followersCount),
-                  _StatItem(label: 'Подписок', value: _followingCount),
-                  _StatItem(label: 'Лайков', value: _likesCount),
+                  _StatItem(label: 'Подписчики', value: _followersCount),
+                  _StatItem(label: 'Подписки', value: _followingCount),
+                  _StatItem(label: 'Лайки', value: _likesCount),
                 ],
               ),
               const SizedBox(height: 20),
@@ -300,7 +346,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 ],
               ),
               SizedBox(
-                height: 260,
+                height: 300,
                 child: TabBarView(
                   controller: _tabController,
                   children: [
@@ -316,58 +362,23 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                     ),
                     _PhotoGrid(
                       photos: galleryPhotos,
+                      canDelete: _isOwnProfile,
                       onPhotoChanged: _loadProfile,
                     ),
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+              if (_isOwnProfile)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: _InterestsSection(
+                    interests: profile['interests'],
+                    onChanged: _loadProfile,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Мои интересы',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const InterestsEditScreen(),
-                              ),
-                            ).then((_) => _loadProfile());
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade100,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.edit,
-                              size: 16,
-                              color: Colors.orange,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _InterestsWrap(interests: profile['interests']),
-                  ],
-                ),
-              ),
               const SizedBox(height: 20),
             ],
           ),
@@ -381,12 +392,50 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     final localAvatar = (profile['local_avatar_path'] ?? '').toString();
     if (avatarUrl.isEmpty && localAvatar.isEmpty) return null;
     return {
-      'id': -1,
+      'id': '-avatar',
       'image_url': avatarUrl,
       'local_path': localAvatar,
       'storage_path': '',
       'is_avatar': true,
     };
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.profile, required this.photo});
+
+  final Map<String, dynamic> profile;
+  final Map<String, dynamic>? photo;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = (profile['avatar_url'] ?? '').toString();
+    final localAvatar = (profile['local_avatar_path'] ?? '').toString();
+    ImageProvider? image;
+    if (localAvatar.isNotEmpty && File(localAvatar).existsSync()) {
+      image = FileImage(File(localAvatar));
+    } else if (avatar.isNotEmpty) {
+      image = NetworkImage(avatar);
+    }
+    return GestureDetector(
+      onTap: photo == null
+          ? null
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    _PhotoViewerScreen(photo: photo!, canDelete: false),
+              ),
+            ),
+      child: CircleAvatar(
+        radius: 50,
+        backgroundColor: Colors.white,
+        backgroundImage: image,
+        child: image == null
+            ? const Icon(Icons.person, size: 50, color: Colors.grey)
+            : null,
+      ),
+    );
   }
 }
 
@@ -414,57 +463,69 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _InterestsWrap extends StatelessWidget {
-  const _InterestsWrap({required this.interests});
+class _InterestsSection extends StatelessWidget {
+  const _InterestsSection({required this.interests, required this.onChanged});
 
   final Object? interests;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
     final values = interests is List
         ? (interests as List).map((interest) => interest.toString()).toList()
         : <String>[];
-
-    if (values.isEmpty) {
-      return const Text(
-        'Интересы не выбраны',
-        style: TextStyle(color: Colors.grey),
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: values
-          .map(
-            (interest) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Text(
-                interest,
-                style: const TextStyle(color: Colors.black87),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Мои интересы',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-          )
-          .toList(),
+            IconButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const InterestsEditScreen()),
+              ).then((_) => onChanged()),
+              icon: const Icon(Icons.edit, size: 18),
+            ),
+          ],
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: values.isEmpty
+              ? [
+                  const Text(
+                    'Интересы не выбраны',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ]
+              : values
+                    .map(
+                      (interest) => Chip(
+                        label: Text(interest),
+                        backgroundColor: Colors.white,
+                      ),
+                    )
+                    .toList(),
+        ),
+      ],
     );
   }
 }
 
 class _PhotoGrid extends StatelessWidget {
-  const _PhotoGrid({required this.photos, required this.onPhotoChanged});
+  const _PhotoGrid({
+    required this.photos,
+    required this.canDelete,
+    required this.onPhotoChanged,
+  });
 
   final List<Map<String, dynamic>> photos;
+  final bool canDelete;
   final VoidCallback onPhotoChanged;
 
   @override
@@ -472,66 +533,71 @@ class _PhotoGrid extends StatelessWidget {
     if (photos.isEmpty) {
       return const Center(child: Text('Фотографии пока не добавлены'));
     }
-
-    final pages = <List<Map<String, dynamic>>>[];
-    for (var index = 0; index < photos.length; index += 6) {
-      final end = (index + 6).clamp(0, photos.length);
-      pages.add(photos.sublist(index, end));
-    }
-
-    return PageView.builder(
-      itemCount: pages.length,
-      itemBuilder: (context, pageIndex) {
-        final pagePhotos = pages[pageIndex];
-        return GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(8),
-          itemCount: pagePhotos.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            mainAxisSpacing: 6,
-            crossAxisSpacing: 6,
-          ),
-          itemBuilder: (context, index) {
-            final url = (pagePhotos[index]['image_url'] ?? '').toString();
-            final localPath = (pagePhotos[index]['local_path'] ?? '')
-                .toString();
-            return GestureDetector(
-              onTap: () async {
-                final deleted = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _PhotoViewerScreen(
-                      photo: pagePhotos[index],
-                      canDelete: pagePhotos[index]['is_avatar'] != true,
-                    ),
-                  ),
-                );
-                if (deleted == true) onPhotoChanged();
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: url.isNotEmpty
-                    ? Image.network(
-                        url,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            _BrokenPhoto(),
-                      )
-                    : localPath.isNotEmpty
-                    ? Image.file(
-                        File(localPath),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            _BrokenPhoto(),
-                      )
-                    : const _BrokenPhoto(),
+    return GridView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: photos.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 6,
+        crossAxisSpacing: 6,
+      ),
+      itemBuilder: (context, index) {
+        final photo = photos[index];
+        return GestureDetector(
+          onTap: () async {
+            final deleted = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => _PhotoViewerScreen(
+                  photo: photo,
+                  canDelete: canDelete && photo['is_avatar'] != true,
+                ),
               ),
             );
+            if (deleted == true) onPhotoChanged();
           },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: ProfilePhotoImage(photo: photo, fit: BoxFit.cover),
+          ),
         );
       },
     );
+  }
+}
+
+class ProfilePhotoImage extends StatelessWidget {
+  const ProfilePhotoImage({super.key, required this.photo, this.fit});
+
+  final Map<String, dynamic> photo;
+  final BoxFit? fit;
+
+  @override
+  Widget build(BuildContext context) {
+    final localPath = (photo['local_path'] ?? '').toString();
+    final url = (photo['image_url'] ?? '').toString();
+    if (localPath.isNotEmpty && File(localPath).existsSync()) {
+      return Image.file(
+        File(localPath),
+        fit: fit,
+        errorBuilder: (_, _, _) => const _BrokenPhoto(),
+      );
+    }
+    if (url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: fit,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const ColoredBox(
+            color: Color(0xFFECECEC),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        },
+        errorBuilder: (_, _, _) => const _BrokenPhoto(),
+      );
+    }
+    return const _BrokenPhoto();
   }
 }
 
@@ -568,24 +634,18 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
       ),
     );
     if (confirm != true) return;
-
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
-
     setState(() => _deleting = true);
     await ProfileSyncService.instance.deletePhoto(
       userId: user.id,
       photo: widget.photo,
     );
-    if (!mounted) return;
-    Navigator.pop(context, true);
+    if (mounted) Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final url = (widget.photo['image_url'] ?? '').toString();
-    final localPath = (widget.photo['local_path'] ?? '').toString();
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -609,21 +669,7 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
         child: InteractiveViewer(
           minScale: 1,
           maxScale: 4,
-          child: url.isNotEmpty
-              ? Image.network(
-                  url,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const _BrokenPhoto(),
-                )
-              : localPath.isNotEmpty
-              ? Image.file(
-                  File(localPath),
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const _BrokenPhoto(),
-                )
-              : const _BrokenPhoto(),
+          child: ProfilePhotoImage(photo: widget.photo, fit: BoxFit.contain),
         ),
       ),
     );
@@ -635,9 +681,9 @@ class _BrokenPhoto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Colors.grey,
-      child: const Icon(Icons.broken_image, color: Colors.white),
+    return const ColoredBox(
+      color: Color(0xFFE0E0E0),
+      child: Center(child: Icon(Icons.broken_image, color: Colors.grey)),
     );
   }
 }

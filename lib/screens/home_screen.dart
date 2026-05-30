@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../services/social_service.dart';
+import 'view_profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -9,389 +11,208 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Map<String, dynamic>> _profiles = [];
+  final _search = TextEditingController();
+  final _social = SocialService.instance;
+  List<Map<String, dynamic>> _feed = [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadProfiles();
+    _loadFeed();
+    _search.addListener(_loadFeed);
   }
 
-  Future<void> _loadProfiles() async {
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFeed() async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
-
-      // Загружаем все профили КРОМЕ своего
-      final response = await Supabase.instance.client
-          .from('Prof')
-          .select('id, name, age, avatar_url, city')
-          .neq('id', user.id); // Исключаем свой профиль
-
-      if (!mounted) return;
-
-      setState(() {
-        _profiles = List<Map<String, dynamic>>.from(response);
-        _loading = false;
-      });
-    } catch (e) {
-      print('❌ Ошибка загрузки анкет: $e');
-      if (!mounted) return;
-      setState(() => _loading = false);
+      final feed = await _social.loadFeed(query: _search.text);
+      if (mounted) {
+        setState(() {
+          _feed = feed;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _showFilters() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => const FiltersBottomSheet(),
-    );
+  Future<void> _toggleLike(Map<String, dynamic> item) async {
+    await _social.togglePhotoLike(item['id'].toString(), item['liked'] == true);
+    await _loadFeed();
   }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF0F5), // Розовый фон
+      backgroundColor: const Color(0xFFF1F1F1),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Анкеты',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        automaticallyImplyLeading: false,
+        title: const Text('Лента'),
         centerTitle: true,
-        actions: [
-          // 🔔 Уведомления
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.black),
-            onPressed: () {
-              // TODO: Открыть уведомления
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('🔔 Уведомления')));
-            },
-          ),
-          // 📋 Фильтры
-          IconButton(
-            icon: const Icon(Icons.filter_list, color: Colors.black),
-            onPressed: _showFilters,
-          ),
-          const SizedBox(width: 8),
-        ],
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0.4,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _profiles.isEmpty
-          ? _buildEmptyState()
-          : _buildProfilesGrid(),
-    );
-  }
-
-  // 📭 Пустое состояние (нет анкет)
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      body: Column(
         children: [
-          Icon(Icons.people_outline, size: 100, color: Colors.grey[400]),
-          const SizedBox(height: 20),
-          Text(
-            'Пока нет анкет',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[600],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+            child: TextField(
+              controller: _search,
+              decoration: InputDecoration(
+                hintText: 'Поиск по @username',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            'Загляни позже 👀',
-            style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _loadFeed,
+                    child: _feed.isEmpty
+                        ? ListView(
+                            children: const [
+                              SizedBox(height: 160),
+                              Center(child: Text('В ленте пока нет фото')),
+                            ],
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            itemCount: _feed.length,
+                            itemBuilder: (context, index) => _FeedCard(
+                              item: _feed[index],
+                              onLike: () => _toggleLike(_feed[index]),
+                              onOpenProfile: () {
+                                final profile = Map<String, dynamic>.from(
+                                  _feed[index]['profile'] as Map,
+                                );
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ViewProfileScreen(
+                                      userId: profile['id'].toString(),
+                                    ),
+                                  ),
+                                ).then((_) => _loadFeed());
+                              },
+                            ),
+                          ),
+                  ),
           ),
         ],
       ),
     );
   }
+}
 
-  // 📱 Сетка анкет
-  Widget _buildProfilesGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.75,
+class _FeedCard extends StatelessWidget {
+  const _FeedCard({
+    required this.item,
+    required this.onLike,
+    required this.onOpenProfile,
+  });
+
+  final Map<String, dynamic> item;
+  final VoidCallback onLike;
+  final VoidCallback onOpenProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = Map<String, dynamic>.from(item['profile'] as Map);
+    final liked = item['liked'] == true;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      itemCount: _profiles.length,
-      itemBuilder: (context, index) {
-        final profile = _profiles[index];
-        return _buildProfileCard(profile);
-      },
-    );
-  }
-
-  //  Карточка анкеты
-  Widget _buildProfileCard(Map<String, dynamic> profile) {
-    final name = profile['name'] ?? 'Аноним';
-    final age = profile['age']?.toString() ?? '';
-    final avatarUrl = profile['avatar_url'];
-    final city = profile['city'] ?? '';
-
-    return GestureDetector(
-      onTap: () {
-        // TODO: Открыть профиль
-        print('👤 Открыть профиль: $name');
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Фото
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(16),
-                ),
-                child: avatarUrl != null
-                    ? Image.network(
-                        avatarUrl,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey[300],
-                            child: Icon(
-                              Icons.person,
-                              size: 50,
-                              color: Colors.grey[400],
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        color: Colors.grey[300],
-                        child: Icon(
-                          Icons.person,
-                          size: 50,
-                          color: Colors.grey[400],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundImage:
+                        (profile['avatar_url'] ?? '').toString().isNotEmpty
+                        ? NetworkImage(profile['avatar_url'].toString())
+                        : null,
+                    child: (profile['avatar_url'] ?? '').toString().isEmpty
+                        ? const Icon(Icons.person)
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: InkWell(
+                      onTap: onOpenProfile,
+                      child: Text(
+                        SocialService.instance.usernameLabel(profile['username']),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
                         ),
                       ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            // Информация
+            AspectRatio(
+              aspectRatio: 1,
+              child: ProfilePhotoImage(photo: item, fit: BoxFit.cover),
+            ),
             Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Row(
                 children: [
-                  Text(
-                    '$name, $age',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  InkWell(
+                    onTap: onLike,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        liked ? Icons.favorite : Icons.favorite_border,
+                        color: liked ? Colors.pinkAccent : Colors.black54,
+                      ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (city.isNotEmpty)
-                    Text(
-                      city,
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${item['likes_count'] ?? 0}',
+                    style: const TextStyle(color: Colors.black54),
+                  ),
                 ],
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------
-// 📋 НИЖНЯЯ ПАНЕЛЬ ФИЛЬТРОВ
-// ---------------------------------------------------------
-class FiltersBottomSheet extends StatefulWidget {
-  const FiltersBottomSheet({super.key});
-
-  @override
-  State<FiltersBottomSheet> createState() => _FiltersBottomSheetState();
-}
-
-class _FiltersBottomSheetState extends State<FiltersBottomSheet> {
-  RangeValues _ageRange = const RangeValues(18, 35);
-  double _distance = 50;
-  String _gender = 'all'; // all, male, female
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Заголовок
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Фильтры',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-          const Divider(height: 32),
-
-          // 👥 Пол
-          const Text(
-            'Пол',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildFilterChip('Все', 'all'),
-              const SizedBox(width: 12),
-              _buildFilterChip('Мужской', 'male'),
-              const SizedBox(width: 12),
-              _buildFilterChip('Женский', 'female'),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // 🎂 Возраст
-          const Text(
-            'Возраст',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          RangeSlider(
-            values: _ageRange,
-            min: 18,
-            max: 80,
-            divisions: 62,
-            labels: RangeLabels(
-              '${_ageRange.start.round()}',
-              '${_ageRange.end.round()}',
-            ),
-            onChanged: (values) {
-              setState(() => _ageRange = values);
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('${_ageRange.start.round()} лет'),
-                Text('${_ageRange.end.round()} лет'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // 📍 Расстояние
-          const Text(
-            'Расстояние',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          Slider(
-            value: _distance,
-            min: 1,
-            max: 200,
-            divisions: 199,
-            label: '${_distance.round()} км',
-            onChanged: (value) {
-              setState(() => _distance = value);
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              'До ${_distance.round()} км',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // 💾 Кнопка применить
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: () {
-                // TODO: Применить фильтры
-                print('🔍 Применить фильтры:');
-                print('  Пол: $_gender');
-                print('  Возраст: ${_ageRange.start}-${_ageRange.end}');
-                print('  Расстояние: $_distance км');
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.pink,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text(
-                'Применить',
-                style: TextStyle(fontSize: 18, color: Colors.white),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _gender == value;
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() => _gender = value);
-      },
-      backgroundColor: Colors.grey[200],
-      selectedColor: Colors.pink,
-      checkmarkColor: Colors.white,
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.black,
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
       ),
     );
   }

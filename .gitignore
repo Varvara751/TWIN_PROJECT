@@ -33,6 +33,8 @@ analysis_benchmark.json
 .packages.generated
 
 # Flutter/Dart/Pub related
+node_modules/
+supabase/.temp/
 **/doc/api/
 .dart_tool/
 .flutter-plugins

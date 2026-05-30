@@ -1,4 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+/// <reference lib="deno.ns" />
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +15,7 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 async function removeStorageFolder(
-  supabase: any,
+  supabase: SupabaseClient,
   bucket: string,
   folder: string,
 ) {
@@ -67,8 +68,13 @@ Deno.serve(async (req) => {
 
   await supabase.from('profile_likes').delete().eq('target_user_id', user.id);
   await supabase.from('profile_likes').delete().eq('source_user_id', user.id);
+  await supabase.from('profile_photo_likes').delete().eq('source_user_id', user.id);
   await supabase.from('profile_follows').delete().eq('follower_id', user.id);
   await supabase.from('profile_follows').delete().eq('following_id', user.id);
+  await supabase.from('message_deletions').delete().eq('user_id', user.id);
+  await supabase.from('chat_deletions').delete().eq('user_id', user.id);
+  await supabase.from('chat_blocks').delete().eq('blocker_id', user.id);
+  await supabase.from('chat_blocks').delete().eq('blocked_id', user.id);
   await supabase.from('profile_photos').delete().eq('user_id', user.id);
 
   const { error: profileError } = await supabase

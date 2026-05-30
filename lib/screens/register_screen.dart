@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_constants.dart';
+import '../services/profile_sync_service.dart';
 import 'main_screen.dart';
 
 const allowedEmailDomains = {'mail.ru', 'gmail.com', 'yandex.ru'};
@@ -23,6 +24,21 @@ bool isAllowedRegistrationEmail(String value) {
   return allowedEmailDomains.contains(domain) && emailPattern.hasMatch(email);
 }
 
+String initialUsernameForRegistration(String email, String userId) {
+  final prefix = email
+      .split('@')
+      .first
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9_]'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  final base = prefix.length >= 3 ? prefix : 'user';
+  final suffix = userId.replaceAll('-', '').substring(0, 8);
+  final maxBaseLength = 24 - suffix.length - 1;
+  final baseLength = base.length < maxBaseLength ? base.length : maxBaseLength;
+  return '${base.substring(0, baseLength)}_$suffix';
+}
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -35,6 +51,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
   bool _loading = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _pass.dispose();
+    super.dispose();
+  }
 
   void _showMessage(String message) {
     if (!mounted) return;
@@ -79,19 +103,52 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password: password,
       );
 
-      if (res.user != null) {
-        await Supabase.instance.client.from(tableName).insert({
-          'id': res.user!.id,
-          'email': email,
-          'name': _name.text.trim(),
-          'created_at': DateTime.now().toIso8601String(),
-        });
+      final user = res.user;
+      if (user == null) {
+        _showMessage('Не удалось создать аккаунт. Попробуйте еще раз.');
+        return;
+      }
 
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MainScreen()),
+      if (res.session == null) {
+        try {
+          await Supabase.instance.client.auth.signInWithPassword(
+            email: email,
+            password: password,
+          );
+        } on AuthException {
+          // Email confirmation may be enabled. The local profile still gets
+          // saved after auth user creation; sync will continue after login.
+        }
+      }
+
+      final profileData = {
+        'id': user.id,
+        'email': email,
+        'username': initialUsernameForRegistration(email, user.id),
+        'name': _name.text.trim(),
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      await ProfileSyncService.instance.saveProfileAndSync(
+        userId: user.id,
+        profileData: profileData,
+      );
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+    } on AuthException catch (e) {
+      if (e.statusCode == '429' || e.code == 'over_email_send_rate_limit') {
+        _showMessage(
+          'Supabase временно ограничил отправку писем. Подождите несколько минут или отключите подтверждение email в Auth settings.',
         );
+      } else if (e.message.toLowerCase().contains('already registered')) {
+        _showMessage('Аккаунт с такой почтой уже зарегистрирован.');
+      } else {
+        _showMessage('Ошибка регистрации: ${e.message}');
       }
     } on PostgrestException catch (e) {
       if (e.code == '23505' ||
@@ -100,21 +157,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'Профиль с такой почтой уже существует. Создать второй нельзя.',
         );
       } else {
-        _showMessage('Ошибка: ${e.message}');
+        _showMessage('Ошибка базы данных: ${e.message}');
       }
     } catch (e) {
       _showMessage('Ошибка: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _pass.dispose();
-    super.dispose();
   }
 
   @override

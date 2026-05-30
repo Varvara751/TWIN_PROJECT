@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -45,6 +46,15 @@ class ProfileSyncService {
     final localProfile = Map<String, dynamic>.from(profileData);
     if (avatarFile != null) {
       localProfile['local_avatar_path'] = avatarFile.path;
+    } else {
+      final current = await _store.getProfile(userId);
+      final currentLocalPath = current?['local_avatar_path']?.toString();
+      final currentAvatarUrl = current?['avatar_url']?.toString();
+      if (currentLocalPath != null &&
+          currentLocalPath.isNotEmpty &&
+          (currentAvatarUrl == null || currentAvatarUrl.isEmpty)) {
+        localProfile['local_avatar_path'] = currentLocalPath;
+      }
     }
     localProfile['is_avatar_pending'] = avatarFile != null;
     await _store.saveProfile(userId, localProfile);
@@ -63,7 +73,7 @@ class ProfileSyncService {
       );
     }
 
-    await syncPending(userId);
+    unawaited(syncPending(userId));
   }
 
   Future<void> syncPending(String userId) async {
