@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/social_service.dart';
+import '../widgets/username_badge.dart';
 import 'view_profile_screen.dart';
 
 class FavoritesScreen extends StatefulWidget {
@@ -18,7 +19,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   final _social = SocialService.instance;
   List<Map<String, dynamic>> _followers = [];
   List<Map<String, dynamic>> _following = [];
+  List<Map<String, dynamic>> _searchResults = [];
   bool _loading = true;
+  bool _searching = false;
+  int _searchRun = 0;
 
   String? get _userId {
     try {
@@ -32,7 +36,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _search.addListener(() => setState(() {}));
+    _search.addListener(_onSearchChanged);
     _load();
   }
 
@@ -62,6 +66,27 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _onSearchChanged() async {
+    final query = _search.text.trim();
+    final run = ++_searchRun;
+    if (query.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _searching = false;
+        });
+      }
+      return;
+    }
+    setState(() => _searching = true);
+    final results = await _social.searchProfiles(query);
+    if (!mounted || run != _searchRun) return;
+    setState(() {
+      _searchResults = results;
+      _searching = false;
+    });
   }
 
   List<Map<String, dynamic>> _filter(List<Map<String, dynamic>> profiles) {
@@ -120,6 +145,14 @@ class _FavoritesScreenState extends State<FavoritesScreen>
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
+                : _search.text.trim().isNotEmpty
+                ? _searching
+                      ? const Center(child: CircularProgressIndicator())
+                      : _ProfileList(
+                          profiles: _searchResults,
+                          emptyText:
+                              'РџРѕР»СЊР·РѕРІР°С‚РµР»Рё РЅРµ РЅР°Р№РґРµРЅС‹',
+                        )
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: TabBarView(
@@ -174,8 +207,9 @@ class _ProfileList extends StatelessWidget {
                 : null,
           ),
           title: Text(_displayName(profile)),
-          subtitle: Text(
-            SocialService.instance.usernameLabel(profile['username']),
+          subtitle: Align(
+            alignment: Alignment.centerLeft,
+            child: UsernameBadge(username: profile['username'], compact: true),
           ),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.push(

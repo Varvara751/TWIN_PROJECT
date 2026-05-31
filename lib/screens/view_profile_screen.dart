@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/profile_sync_service.dart';
 import '../services/social_service.dart';
+import '../widgets/username_badge.dart';
 import 'edit_profile_screen.dart';
 import 'interests_edit_screen.dart';
 import 'messenger_screen.dart';
@@ -88,7 +89,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
         );
       }
       final visiblePhotos = _isOwnProfile
-          ? await _sync.getLocalPhotos(userId)
+          ? [...await _pendingLocalPhotos(userId), ...photos]
           : photos;
       final followers = await _social.followersCount(userId);
       final following = await _social.followingCount(userId);
@@ -139,15 +140,15 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
 
   Future<List<Map<String, dynamic>>> _loadPhotos(String userId) async {
     try {
-      final photos = await _client
-          .from('profile_photos')
-          .select()
-          .eq('user_id', userId)
-          .order('created_at', ascending: false);
-      return List<Map<String, dynamic>>.from(photos);
+      return await _social.loadProfilePhotos(userId);
     } catch (_) {
       return [];
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _pendingLocalPhotos(String userId) async {
+    final photos = await _sync.getLocalPhotos(userId);
+    return photos.where((photo) => photo['synced'] != 1).toList();
   }
 
   int? _ageFromBirthDate(String? value) {
@@ -196,6 +197,15 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
+  }
+
+  Future<void> _togglePhotoLike(Map<String, dynamic> photo) async {
+    final photoId = photo['id']?.toString() ?? '';
+    if (photoId.isEmpty || photoId.startsWith('-') || photo['synced'] == 0) {
+      return;
+    }
+    await _social.togglePhotoLike(photoId, photo['liked'] == true);
+    await _loadProfile();
   }
 
   Future<void> _openChat() async {
@@ -280,10 +290,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                _social.usernameLabel(profile['username']),
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
-              ),
+              UsernameBadge(username: profile['username']),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -364,6 +371,7 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
                       photos: galleryPhotos,
                       canDelete: _isOwnProfile,
                       onPhotoChanged: _loadProfile,
+                      onLike: _togglePhotoLike,
                     ),
                   ],
                 ),
@@ -522,11 +530,13 @@ class _PhotoGrid extends StatelessWidget {
     required this.photos,
     required this.canDelete,
     required this.onPhotoChanged,
+    required this.onLike,
   });
 
   final List<Map<String, dynamic>> photos;
   final bool canDelete;
   final VoidCallback onPhotoChanged;
+  final Future<void> Function(Map<String, dynamic> photo) onLike;
 
   @override
   Widget build(BuildContext context) {
@@ -543,22 +553,70 @@ class _PhotoGrid extends StatelessWidget {
       ),
       itemBuilder: (context, index) {
         final photo = photos[index];
+        final canLike =
+            photo['is_avatar'] != true &&
+            photo['synced'] != 0 &&
+            !(photo['id']?.toString() ?? '').startsWith('-');
+        final liked = photo['liked'] == true;
         return GestureDetector(
           onTap: () async {
-            final deleted = await Navigator.push<bool>(
+            final changed = await Navigator.push<bool>(
               context,
               MaterialPageRoute(
                 builder: (_) => _PhotoViewerScreen(
                   photo: photo,
                   canDelete: canDelete && photo['is_avatar'] != true,
+                  canLike: canLike,
                 ),
               ),
             );
-            if (deleted == true) onPhotoChanged();
+            if (changed == true) onPhotoChanged();
           },
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: ProfilePhotoImage(photo: photo, fit: BoxFit.cover),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ProfilePhotoImage(photo: photo, fit: BoxFit.cover),
+                if (canLike)
+                  Positioned(
+                    right: 6,
+                    bottom: 6,
+                    child: InkWell(
+                      onTap: () => onLike(photo),
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              liked ? Icons.favorite : Icons.favorite_border,
+                              color: liked ? Colors.pinkAccent : Colors.white,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${photo['likes_count'] ?? 0}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -602,10 +660,15 @@ class ProfilePhotoImage extends StatelessWidget {
 }
 
 class _PhotoViewerScreen extends StatefulWidget {
-  const _PhotoViewerScreen({required this.photo, required this.canDelete});
+  const _PhotoViewerScreen({
+    required this.photo,
+    required this.canDelete,
+    this.canLike = false,
+  });
 
   final Map<String, dynamic> photo;
   final bool canDelete;
+  final bool canLike;
 
   @override
   State<_PhotoViewerScreen> createState() => _PhotoViewerScreenState();
@@ -613,6 +676,16 @@ class _PhotoViewerScreen extends StatefulWidget {
 
 class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
   bool _deleting = false;
+  late bool _liked;
+  late int _likesCount;
+  bool _changed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _liked = widget.photo['liked'] == true;
+    _likesCount = int.tryParse('${widget.photo['likes_count'] ?? 0}') ?? 0;
+  }
 
   Future<void> _deletePhoto() async {
     final confirm = await showDialog<bool>(
@@ -644,32 +717,63 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
     if (mounted) Navigator.pop(context, true);
   }
 
+  Future<void> _toggleLike() async {
+    final photoId = widget.photo['id']?.toString() ?? '';
+    if (!widget.canLike || photoId.isEmpty || photoId.startsWith('-')) return;
+    await SocialService.instance.togglePhotoLike(photoId, _liked);
+    if (!mounted) return;
+    setState(() {
+      _liked = !_liked;
+      _likesCount += _liked ? 1 : -1;
+      if (_likesCount < 0) _likesCount = 0;
+      _changed = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
+    return PopScope<bool>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) Navigator.pop(context, _changed);
+      },
+      child: Scaffold(
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        actions: [
-          if (widget.canDelete)
-            IconButton(
-              onPressed: _deleting ? null : _deletePhoto,
-              icon: _deleting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.delete_outline),
-            ),
-        ],
-      ),
-      body: Center(
-        child: InteractiveViewer(
-          minScale: 1,
-          maxScale: 4,
-          child: ProfilePhotoImage(photo: widget.photo, fit: BoxFit.contain),
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          actions: [
+            if (widget.canLike)
+              TextButton.icon(
+                onPressed: _toggleLike,
+                icon: Icon(
+                  _liked ? Icons.favorite : Icons.favorite_border,
+                  color: _liked ? Colors.pinkAccent : Colors.white,
+                ),
+                label: Text(
+                  '$_likesCount',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            if (widget.canDelete)
+              IconButton(
+                onPressed: _deleting ? null : _deletePhoto,
+                icon: _deleting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.delete_outline),
+              ),
+          ],
+        ),
+        body: Center(
+          child: InteractiveViewer(
+            minScale: 1,
+            maxScale: 4,
+            child: ProfilePhotoImage(photo: widget.photo, fit: BoxFit.contain),
+          ),
         ),
       ),
     );

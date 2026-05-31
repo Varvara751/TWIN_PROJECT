@@ -277,7 +277,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         return;
       }
 
-      await _sync.saveProfileAndSync(
+      final photoErrors = await _sync.saveProfileAndSync(
         userId: user.id,
         profileData: {
           'id': user.id,
@@ -294,11 +294,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         },
         avatarFile: _avatarFile,
         photoFiles: _newPhotoFiles,
+        waitForSync: true,
       );
 
       if (!mounted) return;
-      setState(() => _saved = true);
+      setState(() {
+        _avatarFile = null;
+        if (photoErrors.isEmpty) _newPhotoFiles = [];
+        _saved = true;
+      });
       _showMessage('Сохранено');
+      if (photoErrors.isNotEmpty) {
+        _showMessage(
+          'Профиль сохранен. Не удалось загрузить ${photoErrors.length} фото.',
+        );
+      }
       if (exitAfterSave) Navigator.pop(context);
     } on PostgrestException catch (e) {
       if (!mounted) return;

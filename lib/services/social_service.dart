@@ -45,7 +45,6 @@ class SocialService {
     final response = await _client
         .from(tableName)
         .select('id, name, surname, username, avatar_url, residence_city, city')
-        .neq('id', user.id)
         .or(
           'username.ilike.%$clean%,name.ilike.%$clean%,surname.ilike.%$clean%',
         )
@@ -91,15 +90,56 @@ class SocialService {
         profile['id'].toString(): profile,
     };
 
-    final photoIds = photoRows.map((photo) => photo['id'].toString()).toList();
-    final likedRows = await _client
-        .from('profile_photo_likes')
-        .select('photo_id')
-        .eq('source_user_id', user.id)
-        .inFilter('photo_id', photoIds);
-    final likedIds = List<Map<String, dynamic>>.from(
-      likedRows,
-    ).map((row) => row['photo_id'].toString()).toSet();
+    final photoStateById = await _photoStateById(photoRows);
+
+    final result = <Map<String, dynamic>>[];
+    for (final photo in photoRows) {
+      final profile = profileById[photo['user_id'].toString()];
+      if (profile == null) continue;
+      final state = photoStateById[photo['id'].toString()] ?? {};
+      result.add({...photo, 'profile': profile, ...state});
+    }
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> loadProfilePhotos(String userId) async {
+    final rows = await _client
+        .from('profile_photos')
+        .select('id, user_id, image_url, storage_path, created_at')
+        .eq('user_id', userId)
+        .order('created_at', ascending: false);
+    final photos = List<Map<String, dynamic>>.from(rows);
+    if (photos.isEmpty) return [];
+    final stateById = await _photoStateById(photos);
+    return photos
+        .map((photo) => {...photo, ...?stateById[photo['id'].toString()]})
+        .toList();
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _photoStateById(
+    List<Map<String, dynamic>> photos,
+  ) async {
+    final user = _client.auth.currentUser;
+    final photoIds = photos
+        .map((photo) => photo['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty && !id.startsWith('-'))
+        .toList();
+    if (photoIds.isEmpty) return {};
+
+    final likedIds = <String>{};
+    if (user != null) {
+      final likedRows = await _client
+          .from('profile_photo_likes')
+          .select('photo_id')
+          .eq('source_user_id', user.id)
+          .inFilter('photo_id', photoIds);
+      likedIds.addAll(
+        List<Map<String, dynamic>>.from(
+          likedRows,
+        ).map((row) => row['photo_id'].toString()),
+      );
+    }
 
     final likeRows = await _client
         .from('profile_photo_likes')
@@ -112,18 +152,13 @@ class SocialService {
       likesCountByPhotoId[photoId] = (likesCountByPhotoId[photoId] ?? 0) + 1;
     }
 
-    final result = <Map<String, dynamic>>[];
-    for (final photo in photoRows) {
-      final profile = profileById[photo['user_id'].toString()];
-      if (profile == null) continue;
-      result.add({
-        ...photo,
-        'profile': profile,
-        'liked': likedIds.contains(photo['id'].toString()),
-        'likes_count': likesCountByPhotoId[photo['id'].toString()] ?? 0,
-      });
-    }
-    return result;
+    return {
+      for (final id in photoIds)
+        id: {
+          'liked': likedIds.contains(id),
+          'likes_count': likesCountByPhotoId[id] ?? 0,
+        },
+    };
   }
 
   Future<List<Map<String, dynamic>>> _feedSearchPhotos(String query) async {
@@ -132,7 +167,9 @@ class SocialService {
     final profiles = List<Map<String, dynamic>>.from(
       await _client
           .from(tableName)
-          .select('id, name, surname, username, avatar_url, residence_city, city')
+          .select(
+            'id, name, surname, username, avatar_url, residence_city, city',
+          )
           .or(
             'username.ilike.%$clean%,name.ilike.%$clean%,surname.ilike.%$clean%',
           )
@@ -309,7 +346,15 @@ class SocialService {
         .eq('user_low', ids[0])
         .eq('user_high', ids[1])
         .maybeSingle();
-    if (existing != null) return existing['id'].toString();
+    if (existing != null) {
+      final chatId = existing['id'].toString();
+      await _client
+          .from('chat_deletions')
+          .delete()
+          .eq('chat_id', chatId)
+          .eq('user_id', user.id);
+      return chatId;
+    }
     final created = await _client
         .from('chats')
         .insert({'user_low': ids[0], 'user_high': ids[1]})
@@ -327,19 +372,46 @@ class SocialService {
         .or('user_low.eq.${user.id},user_high.eq.${user.id}')
         .order('updated_at', ascending: false);
     final chats = List<Map<String, dynamic>>.from(rows);
+    if (chats.isEmpty) return [];
+
+    final chatIds = chats.map((chat) => chat['id'].toString()).toList();
+    final deletedRows = await _client
+        .from('chat_deletions')
+        .select('chat_id')
+        .eq('user_id', user.id)
+        .inFilter('chat_id', chatIds);
+    final deletedChatIds = List<Map<String, dynamic>>.from(
+      deletedRows,
+    ).map((row) => row['chat_id'].toString()).toSet();
+
+    final otherIds = chats
+        .where((chat) => !deletedChatIds.contains(chat['id'].toString()))
+        .map(
+          (chat) => chat['user_low'] == user.id
+              ? chat['user_high'].toString()
+              : chat['user_low'].toString(),
+        )
+        .toSet()
+        .toList();
+    if (otherIds.isEmpty) return [];
+
+    final profileRows = await _client
+        .from(tableName)
+        .select('id, name, surname, username, avatar_url, residence_city, city')
+        .inFilter('id', otherIds);
+    final profilesById = {
+      for (final profile in List<Map<String, dynamic>>.from(profileRows))
+        profile['id'].toString(): profile,
+    };
+    final summaries = await _chatMessageSummaries(chatIds, user.id);
     final visible = <Map<String, dynamic>>[];
     for (final chat in chats) {
-      final deleted = await _client
-          .from('chat_deletions')
-          .select('chat_id')
-          .eq('chat_id', chat['id'])
-          .eq('user_id', user.id)
-          .maybeSingle();
-      if (deleted != null) continue;
+      final chatId = chat['id'].toString();
+      if (deletedChatIds.contains(chatId)) continue;
       final otherId = chat['user_low'] == user.id
           ? chat['user_high'].toString()
           : chat['user_low'].toString();
-      final profile = await loadProfile(otherId);
+      final profile = profilesById[otherId];
       if (profile == null) continue;
       if (query.trim().isNotEmpty &&
           !_profileMatches(
@@ -348,19 +420,60 @@ class SocialService {
           )) {
         continue;
       }
-      final latest = await _client
-          .from('messages')
-          .select('body, created_at')
-          .eq('chat_id', chat['id'])
-          .order('created_at', ascending: false)
-          .limit(1);
       visible.add({
         ...chat,
         'other_profile': profile,
-        'latest_message': List<Map<String, dynamic>>.from(latest).firstOrNull,
+        'latest_message': summaries[chatId]?['latest_message'],
+        'other_message_count': summaries[chatId]?['other_message_count'] ?? 0,
+        'my_message_count': summaries[chatId]?['my_message_count'] ?? 0,
       });
     }
     return visible;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _chatMessageSummaries(
+    List<String> chatIds,
+    String userId,
+  ) async {
+    if (chatIds.isEmpty) return {};
+    final rows = await _client
+        .from('messages')
+        .select('id, chat_id, sender_id, body, created_at')
+        .inFilter('chat_id', chatIds)
+        .order('created_at', ascending: false);
+    final messages = List<Map<String, dynamic>>.from(rows);
+    if (messages.isEmpty) return {};
+    final deletions = await _client
+        .from('message_deletions')
+        .select('message_id')
+        .eq('user_id', userId)
+        .inFilter(
+          'message_id',
+          messages.map((message) => message['id'].toString()).toList(),
+        );
+    final deletedIds = List<Map<String, dynamic>>.from(
+      deletions,
+    ).map((row) => row['message_id'].toString()).toSet();
+    final summaries = <String, Map<String, dynamic>>{};
+    for (final message in messages) {
+      if (deletedIds.contains(message['id'].toString())) continue;
+      final chatId = message['chat_id'].toString();
+      final summary = summaries.putIfAbsent(
+        chatId,
+        () => {
+          'latest_message': message,
+          'other_message_count': 0,
+          'my_message_count': 0,
+        },
+      );
+      if (message['sender_id'] == userId) {
+        summary['my_message_count'] = (summary['my_message_count'] as int) + 1;
+      } else {
+        summary['other_message_count'] =
+            (summary['other_message_count'] as int) + 1;
+      }
+    }
+    return summaries;
   }
 
   Future<List<Map<String, dynamic>>> loadMessages(String chatId) async {
@@ -384,20 +497,52 @@ class SocialService {
         .toList();
   }
 
-  Future<void> sendMessage(String chatId, String body) async {
+  Future<Map<String, dynamic>?> sendMessage(String chatId, String body) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+    final text = body.trim();
+    if (text.isEmpty) return null;
+    final inserted = await _client
+        .from('messages')
+        .insert({'chat_id': chatId, 'sender_id': user.id, 'body': text})
+        .select()
+        .single();
+    try {
+      await _client
+          .from('chats')
+          .update({'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', chatId);
+      await _client
+          .from('chat_deletions')
+          .delete()
+          .eq('chat_id', chatId)
+          .eq('user_id', user.id);
+    } catch (_) {
+      // The message is already saved; chat metadata can refresh on the next load.
+    }
+    return Map<String, dynamic>.from(inserted);
+  }
+
+  Future<void> editMessage(String messageId, String body) async {
     final user = _client.auth.currentUser;
     if (user == null) return;
     final text = body.trim();
     if (text.isEmpty) return;
-    await _client.from('messages').insert({
-      'chat_id': chatId,
-      'sender_id': user.id,
-      'body': text,
-    });
-    await _client
-        .from('chats')
-        .update({'updated_at': DateTime.now().toIso8601String()})
-        .eq('id', chatId);
+    final now = DateTime.now().toIso8601String();
+    try {
+      await _client
+          .from('messages')
+          .update({'body': text, 'edited_at': now})
+          .eq('id', messageId)
+          .eq('sender_id', user.id);
+    } on PostgrestException catch (error) {
+      if (error.code != 'PGRST204') rethrow;
+      await _client
+          .from('messages')
+          .update({'body': text})
+          .eq('id', messageId)
+          .eq('sender_id', user.id);
+    }
   }
 
   Future<void> deleteMessageForMe(String messageId) async {
@@ -407,6 +552,26 @@ class SocialService {
       'message_id': messageId,
       'user_id': user.id,
     });
+  }
+
+  Future<void> clearChatForMe(String chatId) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+    final rows = await _client
+        .from('messages')
+        .select('id')
+        .eq('chat_id', chatId);
+    final messageIds = List<Map<String, dynamic>>.from(
+      rows,
+    ).map((row) => row['id'].toString()).toList();
+    if (messageIds.isEmpty) return;
+    await _client
+        .from('message_deletions')
+        .upsert(
+          messageIds
+              .map((messageId) => {'message_id': messageId, 'user_id': user.id})
+              .toList(),
+        );
   }
 
   Future<void> deleteChatForMe(String chatId) async {

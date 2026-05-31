@@ -11,6 +11,7 @@ class ProfileSyncService {
   ProfileSyncService._();
 
   static final ProfileSyncService instance = ProfileSyncService._();
+  static const Duration _remoteTimeout = Duration(seconds: 25);
 
   final LocalProfileStore _store = LocalProfileStore.instance;
 
@@ -37,11 +38,12 @@ class ProfileSyncService {
     await _store.replaceRemotePhotos(userId, photos);
   }
 
-  Future<void> saveProfileAndSync({
+  Future<List<Object>> saveProfileAndSync({
     required String userId,
     required Map<String, dynamic> profileData,
     File? avatarFile,
     List<File> photoFiles = const [],
+    bool waitForSync = false,
   }) async {
     final localProfile = Map<String, dynamic>.from(profileData);
     if (avatarFile != null) {
@@ -58,6 +60,28 @@ class ProfileSyncService {
     }
     localProfile['is_avatar_pending'] = avatarFile != null;
     await _store.saveProfile(userId, localProfile);
+
+    if (waitForSync) {
+      await _syncProfile(userId, {
+        'profileData': profileData,
+        'avatarPath': avatarFile?.path,
+      }).timeout(_remoteTimeout);
+      final photoErrors = <Object>[];
+      for (final photo in photoFiles) {
+        final localPhotoId = await _store.addLocalPhoto(userId, photo.path);
+        try {
+          await _syncPhoto(userId, {
+            'localPhotoId': localPhotoId,
+            'localPath': photo.path,
+          }).timeout(_remoteTimeout);
+        } catch (error) {
+          photoErrors.add(error);
+          await _store.deletePhoto(localPhotoId);
+        }
+      }
+      return photoErrors;
+    }
+
     await _store.enqueue(
       userId: userId,
       type: 'profile_upsert',
@@ -74,10 +98,12 @@ class ProfileSyncService {
     }
 
     unawaited(syncPending(userId));
+    return const [];
   }
 
-  Future<void> syncPending(String userId) async {
+  Future<void> syncPending(String userId, {bool throwOnError = false}) async {
     final items = await _store.queue(userId);
+    Object? firstError;
     for (final item in items) {
       final id = item['id'] as int;
       final type = item['type'] as String;
@@ -87,17 +113,20 @@ class ProfileSyncService {
 
       try {
         if (type == 'profile_upsert') {
-          await _syncProfile(userId, payload);
+          await _syncProfile(userId, payload).timeout(_remoteTimeout);
         } else if (type == 'photo_upload') {
-          await _syncPhoto(userId, payload);
+          await _syncPhoto(userId, payload).timeout(_remoteTimeout);
         } else if (type == 'photo_delete') {
-          await _syncPhotoDelete(payload);
+          await _syncPhotoDelete(payload).timeout(_remoteTimeout);
         }
         await _store.removeQueueItem(id);
-      } catch (_) {
+      } catch (error) {
         await _store.incrementQueueAttempts(id);
+        firstError ??= error;
+        if (throwOnError) break;
       }
     }
+    if (throwOnError && firstError != null) throw firstError;
   }
 
   Future<void> clearUserData(String userId) {
@@ -130,25 +159,29 @@ class ProfileSyncService {
     );
     profileData.remove('local_avatar_path');
     final avatarPath = payload['avatarPath']?.toString();
+    var avatarUploaded = false;
     if (avatarPath != null && avatarPath.isNotEmpty) {
       final avatarFile = File(avatarPath);
       if (await avatarFile.exists()) {
-        final storagePath = await _uploadImage(
-          file: avatarFile,
-          userId: userId,
-          folder: 'avatars',
-        );
-        profileData['avatar_url'] = _client.storage
-            .from('avatars')
-            .getPublicUrl(storagePath);
+        try {
+          final storagePath = await _uploadImage(
+            file: avatarFile,
+            userId: userId,
+            folder: 'avatars',
+          ).timeout(_remoteTimeout);
+          profileData['avatar_url'] = _client.storage
+              .from('avatars')
+              .getPublicUrl(storagePath);
+          avatarUploaded = true;
+        } catch (_) {}
       }
     }
 
-    await _client.from(tableName).upsert(profileData);
+    await _client.from(tableName).upsert(profileData).timeout(_remoteTimeout);
     final localProfile = Map<String, dynamic>.from(profileData);
     if (avatarPath != null && avatarPath.isNotEmpty) {
       localProfile['local_avatar_path'] = avatarPath;
-      localProfile['is_avatar_pending'] = false;
+      localProfile['is_avatar_pending'] = !avatarUploaded;
     }
     await _store.saveProfile(userId, localProfile);
   }
@@ -159,7 +192,9 @@ class ProfileSyncService {
     if (localPath == null || localPhotoId == null) return;
 
     final file = File(localPath);
-    if (!await file.exists()) return;
+    if (!await file.exists()) {
+      throw StateError('Photo file is not available: $localPath');
+    }
 
     final storagePath = await _uploadImage(
       file: file,

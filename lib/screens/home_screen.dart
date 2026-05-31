@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/social_service.dart';
+import '../widgets/username_badge.dart';
 import 'view_profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _social = SocialService.instance;
   List<Map<String, dynamic>> _feed = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -32,14 +34,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadFeed() async {
     try {
       final feed = await _social.loadFeed(query: _search.text);
-      if (mounted) {
-        setState(() {
-          _feed = feed;
-          _loading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() {
+        _feed = feed;
+        _loading = false;
+        _error = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
     }
   }
 
@@ -47,7 +53,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await _social.togglePhotoLike(item['id'].toString(), item['liked'] == true);
     await _loadFeed();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -86,9 +91,35 @@ class _HomeScreenState extends State<HomeScreen> {
                     onRefresh: _loadFeed,
                     child: _feed.isEmpty
                         ? ListView(
-                            children: const [
-                              SizedBox(height: 160),
-                              Center(child: Text('В ленте пока нет фото')),
+                            children: [
+                              const SizedBox(height: 140),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                child: Text(
+                                  _error == null
+                                      ? 'В ленте пока нет фото'
+                                      : 'Не удалось загрузить ленту. Проверьте миграции Supabase.',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              if (_error != null) ...[
+                                const SizedBox(height: 8),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                  ),
+                                  child: Text(
+                                    _error!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           )
                         : ListView.builder(
@@ -169,15 +200,11 @@ class _FeedCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: InkWell(
-                      onTap: onOpenProfile,
-                      child: Text(
-                        SocialService.instance.usernameLabel(profile['username']),
-                        style: const TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: UsernameBadge(
+                        username: profile['username'],
+                        onTap: onOpenProfile,
                       ),
                     ),
                   ),
