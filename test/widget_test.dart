@@ -8,6 +8,10 @@ import 'package:twin_project/screens/main_screen.dart';
 import 'package:twin_project/screens/messenger_screen.dart';
 import 'package:twin_project/screens/register_screen.dart';
 import 'package:twin_project/screens/welcome_screen.dart';
+import 'package:twin_project/screens/edit_profile_screen.dart';
+import 'package:twin_project/screens/interests_edit_screen.dart';
+import 'package:twin_project/screens/settings_screen.dart';
+import 'package:twin_project/screens/view_profile_screen.dart';
 
 class _TestAssetBundle extends CachingAssetBundle {
   static final Uint8List _transparentPng = Uint8List.fromList([
@@ -172,5 +176,36 @@ void main() {
     await tester.tap(find.byIcon(Icons.chat_bubble_outline));
     await tester.pump();
     expect(find.byType(MessengerScreen), findsOneWidget);
+  });
+
+  testWidgets('EditProfileScreen renders the edit profile  fields', (tester) async {
+    await tester.pumWidget(_buildTestApp(const EditProfileScreen()))
+
+    expect(find.byType(EditProfileScreen), findsOneWidget);
+    expect(find.byType(TextField), findsWidgets);
+    expect(find.byType(ElevatedButton), findsOneWidget);
+  });
+
+  testWidgets('InterestsEditScreen reders the interests list', (tester) async {
+    await tester.pumWidget(_buildTestApp(const InterestsEditScreen()));
+    
+    expect(find.byType(InterestsEditScreen), findsOneWidget);
+    expect(find.byType(ListView), findsOneWidgets);
+    expect(find.byType(ElevatedButton), findsOneWidget);
+  });
+
+  testWidgets('SettingsScreen reders the settings options', (tester) async {
+    await tester.pumWidget(_buildTestApp(const SettingsScreen()));
+    
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.byType(ListView), findsOneWidgets);
+  });
+
+  testWidgets('ViewProfileScreen reders the profile info', (tester) async {
+    await tester.pumWidget(_buildTestApp(const ViewProfileScreen()));
+    
+    expect(find.byType(ViewProfileScreen), findsOneWidget);
+    expect(find.byType(CircleAvatar), findsWidgets);
+    expect(find.byType(Text), findsWidget);
   });
 }
