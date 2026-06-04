@@ -21,6 +21,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.0  
 
 dependency_overrides:
   path_provider_android: 2.2.22
@@ -29,4 +30,27 @@ flutter:
   uses-material-design: true
   assets:
     - .env
-    - assets/TWIN_ico.png
+    - assets/images/TWIN_ico.png
+    - assets/images/Главный2.png
+    - assets/images/Вход.png
+    - assets/images/Регистрация.png
+    - assets/images/Профиль.png
+    - assets/images/Осебе.png
+    - assets/images/Настройки.png
+    - assets/images/Анкеты.png
+  fonts:
+    - family: Rosarivo
+      fonts:
+        - asset: assets/fonts/Rosarivo-Regular.ttf
+    - family: Onest
+      fonts:
+        - asset: assets/fonts/Onest-Regular.ttf
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/TWIN_ico.png"
+  # Для Android 8.0+ (адаптивные иконки)
+  adaptive_icon_background: "#FFE8C8"  # Цвет фона (ваш оранжевый)
+  adaptive_icon_foreground: "assets/images/TWIN_ico.png"
+  # Удалить старые иконки
+  remove_alpha_ios: true
