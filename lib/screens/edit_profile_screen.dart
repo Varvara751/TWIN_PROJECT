@@ -349,101 +349,233 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         return true;
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Редактировать профиль'),
-          actions: [
-            TextButton(
-              onPressed: _saving ? null : () => _save(exitAfterSave: false),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: _saving
-                    ? const SizedBox(
-                        key: ValueKey('saving'),
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        _saved ? Icons.check_circle : Icons.save_outlined,
-                        key: ValueKey(_saved ? 'saved' : 'save'),
-                        color: _saved ? Colors.green : null,
-                      ),
-              ),
+        backgroundColor: Colors.transparent,
+        body: Container(
+          // 🔽 ФОНОВОЕ ИЗОБРАЖЕНИЕ — замените путь на свой файл!
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage(
+                'assets/images/Профиль.png',
+              ), // ← ВАШ ПУТЬ К ФОНУ
+              fit: BoxFit.cover,
             ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: GestureDetector(
-                  onTap: _pickAvatar,
-                  child: CircleAvatar(
-                    radius: 44,
-                    backgroundColor: Colors.grey.shade200,
-                    backgroundImage: _avatarProvider(),
-                    child: _avatarProvider() == null
-                        ? const Icon(Icons.camera_alt, size: 30)
-                        : null,
+          ),
+          child: SafeArea(
+            child: Column(
+              children: [
+                // Кастомный AppBar
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      // Стрелка назад
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back,
+                          size: 28,
+                          color: Colors.black,
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const Spacer(),
+                      // Заголовок
+                      const Text(
+                        'Редактировать профиль',
+                        style: TextStyle(
+                          fontFamily: 'Onest',
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Кнопка сохранения
+                      TextButton(
+                        onPressed: _saving
+                            ? null
+                            : () => _save(exitAfterSave: false),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: _saving
+                              ? const SizedBox(
+                                  key: ValueKey('saving'),
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  _saved
+                                      ? Icons.check_circle
+                                      : Icons.save_outlined,
+                                  key: ValueKey(_saved ? 'saved' : 'save'),
+                                  color: _saved ? Colors.green : Colors.black87,
+                                  size: 24,
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              _buildField('Имя', _name, onChanged: (_) => _markDirty()),
-              _buildField('Фамилия', _surname, onChanged: (_) => _markDirty()),
-              _buildUsernameField(),
-              _buildBirthDateFields(_selectedAge()),
-              _buildRegionDropdown(),
-              _buildCityAutocomplete(),
-              _buildField(
-                'О себе',
-                _bio,
-                maxLines: 3,
-                onChanged: (_) => _markDirty(),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _pickProfilePhotos,
-                icon: const Icon(Icons.add_photo_alternate),
-                label: const Text('Добавить фотографии'),
-              ),
-              if (_newPhotoFiles.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _SelectedPhotos(
-                  files: _newPhotoFiles,
-                  onRemove: (index) {
-                    setState(() {
-                      _newPhotoFiles = [..._newPhotoFiles]..removeAt(index);
-                      _saved = false;
-                    });
-                  },
+                // Контент
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        // Аватар
+                        Center(
+                          child: GestureDetector(
+                            onTap: _pickAvatar,
+                            child: CircleAvatar(
+                              radius: 50,
+                              backgroundColor: Colors.white,
+                              backgroundImage: _avatarProvider(),
+                              child: _avatarProvider() == null
+                                  ? const Icon(
+                                      Icons.camera_alt,
+                                      size: 30,
+                                      color: Colors.grey,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        // Поля ввода
+                        _buildStyledField(
+                          'Имя',
+                          _name,
+                          onChanged: (_) => _markDirty(),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildStyledField(
+                          'Фамилия',
+                          _surname,
+                          onChanged: (_) => _markDirty(),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildStyledUsernameField(),
+                        const SizedBox(height: 12),
+                        _buildStyledBirthDateFields(_selectedAge()),
+                        const SizedBox(height: 12),
+                        _buildStyledRegionDropdown(),
+                        const SizedBox(height: 12),
+                        _buildStyledCityAutocomplete(),
+                        const SizedBox(height: 12),
+                        _buildStyledField(
+                          'О себе',
+                          _bio,
+                          maxLines: 3,
+                          onChanged: (_) => _markDirty(),
+                        ),
+                        const SizedBox(height: 16),
+                        // Кнопка добавления фото
+                        Container(
+                          width: double.infinity,
+                          height: 55,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton.icon(
+                            onPressed: _pickProfilePhotos,
+                            icon: const Icon(
+                              Icons.add_photo_alternate,
+                              color: Colors.black87,
+                            ),
+                            label: const Text(
+                              'Добавить фотографии',
+                              style: TextStyle(
+                                fontFamily: 'Onest',
+                                fontSize: 16,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                        if (_newPhotoFiles.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          _SelectedPhotos(
+                            files: _newPhotoFiles,
+                            onRemove: (index) {
+                              setState(() {
+                                _newPhotoFiles = [..._newPhotoFiles]
+                                  ..removeAt(index);
+                                _saved = false;
+                              });
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
                 ),
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildBirthDateFields(int? age) {
+  Widget _buildStyledBirthDateFields(int? age) {
     final currentYear = DateTime.now().year;
     final years = List.generate(100, (index) => currentYear - index);
     final months = List.generate(12, (index) => index + 1);
     final days = _availableDays();
     final selectedDay = days.contains(_birthDay) ? _birthDay : null;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text(
+            'Дата рождения',
+            style: TextStyle(
+              fontFamily: 'Onest',
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                child: _buildDropdown<int>(
+                child: _buildStyledDropdown<int>(
                   label: 'Год',
                   value: _birthYear,
                   items: years,
@@ -457,7 +589,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildDropdown<int>(
+                child: _buildStyledDropdown<int>(
                   label: 'Месяц',
                   value: _birthMonth,
                   items: months,
@@ -471,7 +603,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildDropdown<int>(
+                child: _buildStyledDropdown<int>(
                   label: 'Число',
                   value: selectedDay,
                   items: days,
@@ -484,31 +616,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             age == null ? 'Возраст: не указан' : 'Возраст: $age',
-            style: const TextStyle(color: Colors.grey),
+            style: const TextStyle(
+              fontFamily: 'Onest',
+              color: Colors.grey,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRegionDropdown() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+  Widget _buildStyledRegionDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: DropdownButtonFormField<String>(
-        initialValue: _residenceRegion,
+        value: _residenceRegion,
         isExpanded: true,
         decoration: const InputDecoration(
           labelText: 'Субъект РФ',
-          border: OutlineInputBorder(),
+          border: InputBorder.none,
         ),
+        dropdownColor: Colors.white,
         items: russianRegions
             .map(
               (region) => DropdownMenuItem(
                 value: region,
-                child: Text(region, overflow: TextOverflow.ellipsis),
+                child: Text(
+                  region,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontFamily: 'Onest'),
+                ),
               ),
             )
             .toList(),
@@ -521,9 +673,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildCityAutocomplete() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+  Widget _buildStyledCityAutocomplete() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Autocomplete<String>(
         key: ValueKey(_residenceRegion),
         initialValue: TextEditingValue(text: _residenceCity.text),
@@ -549,15 +712,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             },
             decoration: const InputDecoration(
               labelText: 'Город',
-              border: OutlineInputBorder(),
+              border: InputBorder.none,
             ),
+            style: const TextStyle(fontFamily: 'Onest'),
           );
         },
       ),
     );
   }
 
-  Widget _buildDropdown<T>({
+  Widget _buildStyledDropdown<T>({
     required String label,
     required T? value,
     required List<T> items,
@@ -565,46 +729,73 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required ValueChanged<T?> onChanged,
   }) {
     return DropdownButtonFormField<T>(
-      initialValue: value,
+      value: value,
       isExpanded: true,
       decoration: InputDecoration(
         labelText: label,
-        border: const OutlineInputBorder(),
+        border: InputBorder.none,
+        isDense: true,
       ),
+      dropdownColor: Colors.white,
       items: items
           .map(
-            (item) =>
-                DropdownMenuItem<T>(value: item, child: Text(itemLabel(item))),
+            (item) => DropdownMenuItem<T>(
+              value: item,
+              child: Text(
+                itemLabel(item),
+                style: const TextStyle(fontFamily: 'Onest', fontSize: 14),
+              ),
+            ),
           )
           .toList(),
       onChanged: onChanged,
     );
   }
 
-  Widget _buildField(
+  Widget _buildStyledField(
     String label,
     TextEditingController controller, {
     int maxLines = 1,
     ValueChanged<String>? onChanged,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextField(
         controller: controller,
         textInputAction: maxLines == 1 ? TextInputAction.next : null,
         maxLines: maxLines,
         onChanged: onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
+        decoration: InputDecoration(labelText: label, border: InputBorder.none),
+        style: const TextStyle(fontFamily: 'Onest'),
       ),
     );
   }
 
-  Widget _buildUsernameField() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+  Widget _buildStyledUsernameField() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: TextField(
         controller: _username,
         onChanged: (_) => _markDirty(),
@@ -615,9 +806,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         decoration: const InputDecoration(
           labelText: 'Имя пользователя',
           hintText: '@sonya_2005',
-          prefixIcon: Icon(Icons.alternate_email),
-          border: OutlineInputBorder(),
+          prefixIcon: Icon(Icons.alternate_email, color: Colors.grey),
+          border: InputBorder.none,
         ),
+        style: const TextStyle(fontFamily: 'Onest'),
       ),
     );
   }
@@ -645,7 +837,7 @@ class _SelectedPhotos extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               child: Image.file(files[index], fit: BoxFit.cover),
             ),
             Positioned(
