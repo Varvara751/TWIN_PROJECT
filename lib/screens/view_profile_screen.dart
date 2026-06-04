@@ -251,144 +251,207 @@ class _ViewProfileScreenState extends State<ViewProfileScreen>
     final bio = _capitalizeFirst((profile['bio'] ?? '').toString());
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFFE8C8),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.black,
-        automaticallyImplyLeading: !_isOwnProfile,
-        title: Text(_isOwnProfile ? 'Профиль' : name),
-        centerTitle: true,
-        actions: [
-          if (_isOwnProfile)
-            TextButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-              ).then((_) => _loadProfile()),
-              child: const Text(
-                'Редактировать',
-                style: TextStyle(color: Colors.black),
+      body: Container(
+        // 🔽 ФОНОВОЕ ИЗОБРАЖЕНИЕ
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/Профиль.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: SafeArea(
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              foregroundColor: Colors.black,
+              automaticallyImplyLeading: !_isOwnProfile,
+              title: const Text(
+                'Профиль',
+                style: TextStyle(
+                  fontFamily: 'Onest',
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
+              centerTitle: true,
+              actions: [
+                if (_isOwnProfile)
+                  TextButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EditProfileScreen(),
+                      ),
+                    ).then((_) => _loadProfile()),
+                    child: const Text(
+                      'Редактировать',
+                      style: TextStyle(
+                        fontFamily: 'Onest',
+                        fontSize: 17,
+                        color: Colors.black,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadProfile,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-              _Avatar(profile: profile, photo: avatarPhoto),
-              const SizedBox(height: 10),
-              Text(
-                '$name${age != null ? ', $age' : ''}',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              UsernameBadge(username: profile['username']),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 8,
-                ),
-                child: Text(
-                  _residence(profile),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ),
-              if (!_isOwnProfile)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _actionBusy ? null : _toggleFollow,
-                          icon: Icon(
-                            _following ? Icons.check : Icons.person_add_alt_1,
-                          ),
-                          label: Text(
-                            _following ? 'Вы подписаны' : 'Подписаться',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _actionBusy ? null : _openChat,
-                          icon: const Icon(Icons.chat_bubble_outline),
-                          label: const Text('Сообщение'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _StatItem(label: 'Подписчики', value: _followersCount),
-                  _StatItem(label: 'Подписки', value: _followingCount),
-                  _StatItem(label: 'Лайки', value: _likesCount),
-                ],
-              ),
-              const SizedBox(height: 20),
-              TabBar(
-                controller: _tabController,
-                labelColor: Colors.black,
-                unselectedLabelColor: Colors.grey,
-                indicatorColor: Colors.black,
-                tabs: const [
-                  Tab(text: 'О себе'),
-                  Tab(text: 'Фотографии'),
-                ],
-              ),
-              SizedBox(
-                height: 300,
-                child: TabBarView(
-                  controller: _tabController,
+            body: RefreshIndicator(
+              onRefresh: _loadProfile,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
                   children: [
+                    const SizedBox(height: 10),
+                    _Avatar(profile: profile, photo: avatarPhoto),
+                    const SizedBox(height: 12),
+                    Text(
+                      '$name${age != null ? ', $age' : ''}',
+                      style: const TextStyle(
+                        fontFamily: 'Onest',
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    UsernameBadge(username: profile['username']),
                     Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: Text(
-                          bio.isNotEmpty ? bio : 'Пока ничего не написано...',
-                          style: const TextStyle(fontSize: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        _residence(profile),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'Onest',
+                          fontSize: 12,
+                          color: Color(0xFF000000),
                         ),
                       ),
                     ),
-                    _PhotoGrid(
-                      photos: galleryPhotos,
-                      canDelete: _isOwnProfile,
-                      onPhotoChanged: _loadProfile,
-                      onLike: _togglePhotoLike,
+                    if (!_isOwnProfile)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _actionBusy ? null : _toggleFollow,
+                                icon: Icon(
+                                  _following
+                                      ? Icons.check
+                                      : Icons.person_add_alt_1,
+                                ),
+                                label: Text(
+                                  _following ? 'Вы подписаны' : 'Подписаться',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _actionBusy ? null : _openChat,
+                                icon: const Icon(Icons.chat_bubble_outline),
+                                label: const Text('Сообщение'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    // Статистика
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _StatItem(label: 'Подписчики', value: _followersCount),
+                        _StatItem(label: 'Подписки', value: _followingCount),
+                        _StatItem(label: 'Лайки', value: _likesCount),
+                      ],
                     ),
+                    const SizedBox(height: 20),
+                    // Табы
+                    TabBar(
+                      controller: _tabController,
+                      labelColor: Colors.black,
+                      unselectedLabelColor: Colors.grey,
+                      indicatorColor: Colors.black,
+                      labelStyle: const TextStyle(
+                        fontFamily: 'Onest',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      tabs: const [
+                        Tab(text: 'О себе'),
+                        Tab(text: 'Фотографии'),
+                      ],
+                    ),
+                    // Вкладки без фиксированной высоты
+                    SizedBox(
+                      height: 400, // Увеличил высоту
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          // Вкладка "О себе" с оранжевым контейнером
+                          SingleChildScrollView(
+                            padding: const EdgeInsets.all(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFFFFE0C8,
+                                ), // Оранжевый цвет
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // О себе
+                                  Text(
+                                    bio.isNotEmpty
+                                        ? bio
+                                        : 'Пока ничего не написано...',
+                                    style: const TextStyle(
+                                      fontFamily: 'Onest',
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  if (_isOwnProfile) ...[
+                                    const SizedBox(height: 16),
+                                    const Divider(color: Colors.black26),
+                                    const SizedBox(height: 16),
+                                    // Интересы
+                                    _InterestsSection(
+                                      interests: profile['interests'],
+                                      onChanged: _loadProfile,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Вкладка "Фотографии"
+                          _PhotoGrid(
+                            photos: galleryPhotos,
+                            canDelete: _isOwnProfile,
+                            onPhotoChanged: _loadProfile,
+                            onLike: _togglePhotoLike,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-              if (_isOwnProfile)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: _InterestsSection(
-                    interests: profile['interests'],
-                    onChanged: _loadProfile,
-                  ),
-                ),
-              const SizedBox(height: 20),
-            ],
+            ),
           ),
         ),
       ),
@@ -460,12 +523,20 @@ class _StatItem extends StatelessWidget {
         Text(
           '$value',
           style: const TextStyle(
+            fontFamily: 'Onest',
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Colors.pink,
+            color: Colors.red, // 🔴 Красный цвет для цифр
           ),
         ),
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Onest',
+            fontSize: 12,
+            color: Color(0xFF000000), // ⚫ Черный цвет для подписей
+          ),
+        ),
       ],
     );
   }
@@ -490,7 +561,11 @@ class _InterestsSection extends StatelessWidget {
           children: [
             const Text(
               'Мои интересы',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
             ),
             IconButton(
               onPressed: () => Navigator.push(
@@ -498,9 +573,12 @@ class _InterestsSection extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const InterestsEditScreen()),
               ).then((_) => onChanged()),
               icon: const Icon(Icons.edit, size: 18),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
             ),
           ],
         ),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -508,7 +586,7 @@ class _InterestsSection extends StatelessWidget {
               ? [
                   const Text(
                     'Интересы не выбраны',
-                    style: TextStyle(color: Colors.grey),
+                    style: TextStyle(color: Colors.black54, fontSize: 14),
                   ),
                 ]
               : values
