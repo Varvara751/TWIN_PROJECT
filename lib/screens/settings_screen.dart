@@ -51,7 +51,7 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text(
-          'Удалить аккаунт?',
+          'Удалить анкету?',
           style: TextStyle(color: Colors.red),
         ),
         content: const Text(
@@ -102,57 +102,81 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = Supabase.instance.client.auth.currentUser;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFFFE0E5),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+      backgroundColor: Colors.transparent,
+      body: Container(
+        // 🔽 ФОНОВОЕ ИЗОБРАЖЕНИЕ — замените путь на свой файл!
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage(
+              'assets/images/Настройки.png',
+            ), // ← ЗАМЕНИТЕ НА СВОЙ ФАЙЛ
+            fit: BoxFit.cover,
+          ),
         ),
-        title: const Text('Настройки', style: TextStyle(color: Colors.black)),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+        child: SafeArea(
           child: Column(
             children: [
-              const SizedBox(height: 20),
-              const Text(
-                'TWIN',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Times New Roman',
+              // Заголовок "Настройки"
+              const Padding(
+                padding: EdgeInsets.only(top: 16, bottom: 16),
+                child: Text(
+                  'Настройки',
+                  style: TextStyle(
+                    fontFamily: 'Onest',
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black,
+                  ),
                 ),
+              ),
+              // TWIN — по центру
+              const Center(
+                child: Text(
+                  'TWIN',
+                  style: TextStyle(
+                    fontFamily: 'Rosarivo',
+                    fontSize: 48,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              // Линия под TWIN — тоже по центру
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 40,
+                  vertical: 8,
+                ),
+                child: Container(height: 1, color: Colors.black),
               ),
               const SizedBox(height: 40),
-              _SettingsButton(
-                icon: Icons.logout,
-                iconColor: Colors.black,
-                label: 'Выйти из аккаунта',
-                labelColor: Colors.black,
-                onPressed: () => _logout(context),
-              ),
-              const SizedBox(height: 15),
-              _SettingsButton(
-                icon: Icons.delete_outline,
-                iconColor: Colors.red,
-                label: 'Удалить аккаунт',
-                labelColor: Colors.red,
-                onPressed: () => _deleteAccount(context),
+              // Кнопки
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    // Выйти из аккаунта
+                    _SettingsButton(
+                      icon: Icons.logout,
+                      iconColor: Colors.black,
+                      label: 'Выйти из аккаунта',
+                      labelColor: Colors.black,
+                      onPressed: () => _logout(context),
+                    ),
+                    const SizedBox(height: 15),
+                    // Удалить анкету
+                    _SettingsButton(
+                      icon: Icons.delete_outline,
+                      iconColor: Colors.red,
+                      label: 'Удалить анкету',
+                      labelColor: Colors.red,
+                      onPressed: () => _deleteAccount(context),
+                    ),
+                  ],
+                ),
               ),
               const Spacer(),
-              if (user != null)
-                Text(
-                  user.email ?? '',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                ),
-              const SizedBox(height: 10),
             ],
           ),
         ),
@@ -194,8 +218,16 @@ class _SettingsButton extends StatelessWidget {
       ),
       child: ElevatedButton.icon(
         onPressed: onPressed,
-        icon: Icon(icon, color: iconColor),
-        label: Text(label, style: TextStyle(fontSize: 16, color: labelColor)),
+        icon: Icon(icon, color: iconColor, size: 24),
+        label: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Onest',
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: labelColor,
+          ),
+        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.white,
           foregroundColor: labelColor,
@@ -203,6 +235,7 @@ class _SettingsButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(30),
           ),
           elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
         ),
       ),
     );
